@@ -2,11 +2,16 @@ package rhyskeepence
 
 import japgolly.scalajs.react._
 import japgolly.scalajs.react.vdom.prefix_<^._
+import org.scalajs.dom.raw.{HTMLElement, HTMLInputElement}
 
 import scala.scalajs.js.timers._
 
 object Select {
   type EventHandler = ReactEventI => Unit
+
+  val inputRef = Ref[HTMLInputElement]("inputRef")
+  val menuRef = Ref[HTMLElement]("menuRef")
+  val focusedRef = Ref[HTMLElement]("focusedRef")
 
   case class Props[A](selectClass: String,
                       placeholder: String,
@@ -27,6 +32,7 @@ object Select {
 
   case class Backend[A]($: BackendScope[Props[A], State[A]]) {
 
+
     def fireChangeEvent(newSelectedValue: Option[A]): Unit = {
       if ($.state.selectedValue != newSelectedValue)
         $.props.onChange(newSelectedValue)
@@ -37,7 +43,9 @@ object Select {
     def selectValue(value: A): Unit = {
       $.modState(_.copy(
         isOpen = false,
-        selectedValue = Some(value)
+        isFocused = false,
+        selectedValue = Some(value),
+        inputValue = ""
       ))
     }
 
@@ -46,6 +54,11 @@ object Select {
         $.state.focusedValue.foreach(selectValue)
       else
         ()
+    }
+
+    def clearValueIfOpen(): Unit = {
+      if ($.state.isOpen) clearValue()
+      else ()
     }
 
     def clearValue(): Unit = {
@@ -92,71 +105,115 @@ object Select {
     }
 
     def focusPreviousOption(): Unit = {
-      val previousIndex =
-        $.state.focusedValue.map(a => {
-          val index = $.state.filteredValues.indexOf(a)
-
-          if ($.state.filteredValues.isDefinedAt(index - 1)) index - 1
-          else $.state.filteredValues.length - 1
-        }).getOrElse({
-          $.state.filteredValues.length - 1
-        })
-
-      $.state.filteredValues(previousIndex)
+      focusAdjacentOption(-1)
     }
 
     def focusNextOption(): Unit = {
-      val nextIndex =
-        $.state.focusedValue.map(a => {
-          val index = $.state.filteredValues.indexOf(a)
+      focusAdjacentOption(1)
+    }
 
-          if ($.state.filteredValues.isDefinedAt(index + 1)) index + 1
-          else 0
+    def focusAdjacentOption(index: Int): Unit = {
+
+      val default =
+        if ($.state.filteredValues.isEmpty)
+          None
+        else if (index > 0)
+          Some(0)
+        else
+          Some($.state.filteredValues.length - 1)
+
+      val adjacentIndex =
+        $.state.focusedValue.map(a => {
+          val currentIndex = $.state.filteredValues.indexOf(a)
+
+          if ($.state.filteredValues.isDefinedAt(currentIndex + index))
+            Some(currentIndex + index)
+          else
+            default
         }).getOrElse({
-          0
+          default
         })
 
-      $.state.filteredValues(nextIndex)
+      if ($.state.isOpen)
+        $.modState(_.copy(
+          focusedValue = adjacentIndex.map($.state.filteredValues)
+        ))
+      else
+        $.modState(_.copy(
+          focusedValue = adjacentIndex.map($.state.filteredValues),
+          isOpen = true,
+          inputValue = ""
+        ))
     }
+
+    def revealFocusedOption(): Unit = {
+      focusedRef($).map(focused => {
+        menuRef($).map(menu => {
+          val focusedDom = focused.getDOMNode()
+          val focusedRect = focusedDom.getBoundingClientRect()
+          val menuDom = menu.getDOMNode()
+          val menuRect = menuDom.getBoundingClientRect()
+
+          println(focusedRect.bottom)
+          println(menuRect.bottom)
+
+          if (focusedRect.bottom > menuRect.bottom || focusedRect.top < menuRect.top)
+            menuDom.scrollTop = focusedDom.offsetTop + focusedDom.clientHeight - menuDom.offsetHeight
+        })
+      })
+    }
+
 
     def handleKeyDown(event: ReactKeyboardEvent): Unit = {
       event.nativeEvent.keyCode match {
-        case 8 => // backspace
-          clearValue()
         case 9 => // tab
           selectFocusedValue()
+          event.preventDefault()
+
         case 13 => // enter
           selectFocusedValue()
+          event.preventDefault()
+
         case 27 => // escape
-          clearValue()
+          clearValueIfOpen()
+          event.preventDefault()
+
         case 38 => // up
           focusPreviousOption()
+          event.preventDefault()
+
         case 40 => // down
           focusNextOption()
+          event.preventDefault()
+
         case _ =>
           ()
       }
-      event.preventDefault()
     }
 
     def handleMouseDown(event: ReactMouseEvent): Unit = {
       event.stopPropagation()
       event.preventDefault()
 
-      $.modState(_.copy(
-        isOpen = true
-      ))
+      if ($.state.isFocused)
+        $.modState(_.copy(
+          isOpen = true
+        ))
+      else
+        focusInput()
+    }
+
+    def focusInput(): Unit = {
+      inputRef($).tryFocus()
     }
 
     def focusValue(value: A): Unit = {
-      println("focus " + value)
       $.modState(_.copy(
         focusedValue = Some(value)
       ))
     }
 
     def unfocusValue(value: A): Unit = {
-      println("unfocus "+ value)
       if ($.state.focusedValue == value)
         $.modState(_.copy(focusedValue = None))
       else ()
@@ -177,23 +234,57 @@ object Select {
           mouseLeave = () => unfocusValue(a),
           mouseDown = () => selectValue(a),
           key = $.props.keyOf(a),
+          focused = isFocused,
           value = $.props.renderValue(a)
         )
       })
     }
 
     def render = {
-      val value: ReactTag =
-        $.state.selectedValue.map($.props.renderTitle).fold(
-          <.div(^.className := "Select-placeholder", ^.title := "", $.props.placeholder)
-        )(selectedValue =>
-          <.div(^.className := "Select-value", ^.title := selectedValue, selectedValue)
-        )
-      val input = <.div(^.className := "Select-input", ^.onFocus ==> handleInputFocus, ^.onBlur ==> handleInputBlur, <.input(^.`type` := "text", ^.className := "", ^.onChange ==> handleInputChange, ^.value := $.state.inputValue))
-      val clear = <.span(^.className := "Select-clear", ^.title := "", ^.onMouseDown --> clearValue, ^.onClick --> clearValue, "×")
-      val menu = $.state.isOpen ?= <.div(^.className := "Select-menu-outer", <.div(^.className := "Select-menu", buildMenu()))
+      val value: TagMod =
+        if ($.state.inputValue.trim() == "")
+          $.state.selectedValue.map($.props.renderTitle).fold(
+            <.div(^.className := "Select-placeholder", ^.title := "", $.props.placeholder)
+          )(selectedValue =>
+            <.div(^.className := "Select-value", ^.title := selectedValue, selectedValue)
+          )
+        else
+          <.div()
 
-      <.div(^.className := "Select " + $.props.selectClass,
+      val input =
+        <.div(
+          ^.className := "Select-input",
+          ^.onFocus ==> handleInputFocus,
+          ^.onBlur ==> handleInputBlur,
+          <.input(
+            ^.`type` := "text",
+            ^.className := "",
+            ^.ref := inputRef,
+            ^.onChange ==> handleInputChange,
+            ^.value := $.state.inputValue))
+
+      val clear =
+        <.span(
+          ^.className := "Select-clear",
+          ^.title := "",
+          ^.onMouseDown --> clearValue,
+          ^.onClick --> clearValue, "×")
+
+      val menu =
+        $.state.isOpen ?=
+          <.div(
+            ^.className := "Select-menu-outer",
+            <.div(
+              ^.className := "Select-menu",
+              ^.ref := menuRef,
+              buildMenu()))
+
+      val classNames = "Select " + $.props.selectClass +
+        (if ($.state.isOpen) " is-open" else "") +
+        (if ($.state.isFocused) " is-focused" else "") +
+        (if ($.state.selectedValue.nonEmpty) " has-value" else "")
+
+      <.div(^.className := classNames,
         <.div(^.className := "Select-control", ^.onKeyDown ==> handleKeyDown, ^.onMouseDown ==> handleMouseDown,
           value,
           input,
@@ -208,13 +299,14 @@ object Select {
       .getInitialState(props => State[A](props.initialValue.map(props.renderTitle).getOrElse(""), isOpen = false, isFocused = false, props.allValues, None, props.initialValue))
       .backend(Backend.apply)
       .render(_.backend.render)
+      .componentDidUpdate((scope, _, _) => scope.backend.revealFocusedOption())
       .build
       .apply(Props[A](selectClass, placeholder, initialValue, values, query, onChange, renderTitle, renderValue, keyOf))
   }
 }
 
 object SelectOption {
-  case class Props(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, value: ReactElement)
+  case class Props(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, focused: Boolean, value: ReactElement)
 
   case class Backend($: BackendScope[Props, Unit]) {
     def render =
@@ -227,12 +319,13 @@ object SelectOption {
         $.props.value)
   }
 
-  def apply(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, key: String, value: ReactElement) =
+  def apply(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, key: String, focused: Boolean, value: ReactElement) =
     ReactComponentB[Props]("SelectOption")
       .stateless
       .backend(Backend.apply)
       .render(_.backend.render)
       .build
       .withKey(key)
-      .apply(Props(className, mouseEnter, mouseLeave, mouseDown, value))
+      .withRef(if (focused) "focusedRef" else null)
+      .apply(Props(className, mouseEnter, mouseLeave, mouseDown, focused, value))
 }
