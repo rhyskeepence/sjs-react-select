@@ -7,7 +7,6 @@ import org.scalajs.dom.raw.{HTMLElement, HTMLInputElement}
 import scala.scalajs.js.timers._
 
 object Select {
-  type EventHandler = ReactEventI => Unit
 
   val inputRef = Ref[HTMLInputElement]("inputRef")
   val menuRef = Ref[HTMLElement]("menuRef")
@@ -154,15 +153,11 @@ object Select {
           val menuDom = menu.getDOMNode()
           val menuRect = menuDom.getBoundingClientRect()
 
-          println(focusedRect.bottom)
-          println(menuRect.bottom)
-
           if (focusedRect.bottom > menuRect.bottom || focusedRect.top < menuRect.top)
             menuDom.scrollTop = focusedDom.offsetTop + focusedDom.clientHeight - menuDom.offsetHeight
         })
       })
     }
-
 
     def handleKeyDown(event: ReactKeyboardEvent): Unit = {
       event.nativeEvent.keyCode match {
@@ -306,7 +301,7 @@ object Select {
 }
 
 object SelectOption {
-  case class Props(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, focused: Boolean, value: ReactElement)
+  case class Props(className: String, mouseEnter: () => Unit, mouseLeave: () => Unit, mouseDown: () => Unit, value: ReactElement)
 
   case class Backend($: BackendScope[Props, Unit]) {
     def render =
@@ -327,5 +322,5 @@ object SelectOption {
       .build
       .withKey(key)
       .withRef(if (focused) "focusedRef" else null)
-      .apply(Props(className, mouseEnter, mouseLeave, mouseDown, focused, value))
+      .apply(Props(className, mouseEnter, mouseLeave, mouseDown, value))
 }
