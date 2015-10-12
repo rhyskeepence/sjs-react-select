@@ -28,7 +28,7 @@ object Example extends JSApp {
 
     val select = Select[State](
       selectClass         = "example",
-      placeholder         = "Select a movie",
+      placeholder         = "Select a state",
       initialValue        = None,
       values              = allStates,
       query               = query => allStates.filter(_.label.toLowerCase.contains(query.toLowerCase)),
