@@ -41,11 +41,12 @@ object Select {
 
     def selectValue(value: A): Unit = {
       $.modState(_.copy(
+        inputValue = "",
         isOpen = false,
         isFocused = false,
         selectedValue = Some(value),
         filteredValues = $.props.allValues,
-        inputValue = ""
+        focusedValue = None
       ))
     }
 
@@ -201,18 +202,33 @@ object Select {
         focusInput()
     }
 
+    def handleMouseDownOnArrow(event: ReactMouseEvent): Unit = {
+      if ($.state.isOpen) {
+        event.stopPropagation()
+        event.preventDefault()
+        $.modState(_.copy(
+          isOpen = false
+        ))
+      }
+
+
+
+    }
+
     def focusInput(): Unit = {
       inputRef($).tryFocus()
     }
 
     def focusValue(value: A): Unit = {
-      $.modState(_.copy(
-        focusedValue = Some(value)
-      ))
+      if (!$.state.focusedValue.contains(value))
+        $.modState(_.copy(
+          focusedValue = Some(value)
+        ))
+      else ()
     }
 
     def unfocusValue(value: A): Unit = {
-      if ($.state.focusedValue == value)
+      if ($.state.focusedValue.contains(value))
         $.modState(_.copy(focusedValue = None))
       else ()
     }
@@ -286,6 +302,8 @@ object Select {
         <.div(^.className := "Select-control", ^.onKeyDown ==> handleKeyDown, ^.onMouseDown ==> handleMouseDown,
           value,
           input,
+          <.span(^.className := "Select-arrow-zone", ^.onMouseDown ==> handleMouseDownOnArrow),
+          <.span(^.className := "Select-arrow", ^.onMouseDown ==> handleMouseDownOnArrow),
           clear
         ),
         menu)
