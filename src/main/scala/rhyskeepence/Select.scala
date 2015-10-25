@@ -44,6 +44,7 @@ object Select {
         isOpen = false,
         isFocused = false,
         selectedValue = Some(value),
+        filteredValues = $.props.allValues,
         inputValue = ""
       ))
     }
@@ -62,7 +63,9 @@ object Select {
 
     def clearValue(): Unit = {
       $.modState(_.copy(
-        selectedValue = None
+        selectedValue = None,
+        filteredValues = $.props.allValues,
+        inputValue = ""
       ))
     }
 
